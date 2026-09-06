@@ -44,12 +44,44 @@ interface IndexItem {
   k?: string;
 }
 
-function parseIndexFile(source: string): IndexItem[] {
+// member-search-index.js alone is a ~30,000-element flat array of small flat
+// objects (string/number fields only, never nested), so JSON.parse-ing the
+// whole array at once means holding all 30,000 parsed objects in memory
+// simultaneously just to iterate them once each. Scanning for one top-level
+// `{...}` at a time and JSON.parse-ing only that slice keeps at most one
+// object alive per iteration instead — the difference that kept this file's
+// own peak memory well clear of a tight worker heap in testing.
+function* parseIndexItems(source: string): Generator<IndexItem> {
   const start = source.indexOf("[");
   const end = source.lastIndexOf("]");
   if (start === -1 || end <= start)
     throw new Error("Unrecognised Javadoc search index format");
-  return JSON.parse(source.slice(start, end + 1)) as IndexItem[];
+
+  let i = start + 1;
+  let inString = false;
+  let depth = 0;
+  let objectStart = -1;
+
+  for (; i < end; i++) {
+    const char = source[i];
+    if (inString) {
+      if (char === "\\") i++;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+    } else if (char === "{") {
+      if (depth === 0) objectStart = i;
+      depth++;
+    } else if (char === "}") {
+      depth--;
+      if (depth === 0 && objectStart !== -1) {
+        yield JSON.parse(source.slice(objectStart, i + 1)) as IndexItem;
+        objectStart = -1;
+      }
+    }
+  }
 }
 
 // The scheduler package is Folia's whole reason to exist, so it gets its own
@@ -231,24 +263,34 @@ async function writeCache(inventory: Inventory): Promise<void> {
   await rename(tmpFile, file);
 }
 
+// Scoping each file's raw text to this function, rather than to three
+// destructured consts living for the whole of download(), lets it be
+// collected the moment its own loop finishes instead of sitting in scope
+// (unused but still reachable) until the largest of the three is done too.
+// Fetching one at a time instead of with Promise.all costs a bit of wall
+// clock but means at most one of the three raw texts is ever in memory.
+async function processIndex(
+  base: string,
+  file: string,
+  handle: (item: IndexItem) => void,
+): Promise<void> {
+  const text = await fetchText(base, file);
+  for (const item of parseIndexItems(text)) handle(item);
+}
+
 async function download(version: string): Promise<Inventory> {
   const base = docsBase(version);
-  // Fetched in parallel (the network round trip, not the parsing, dominates
-  // here), but parsed and folded into `best` one file at a time below so the
-  // ~30,000-item package/type/member arrays never all coexist in memory.
-  const [packagesText, typesText, membersText] = await Promise.all([
-    fetchText(base, PACKAGE_INDEX),
-    fetchText(base, TYPE_INDEX),
-    fetchText(base, MEMBER_INDEX),
-  ]);
-
   const best = new Map<string, DocEntry>();
-  for (const item of parseIndexFile(packagesText))
-    addEntry(best, packageEntry(item), version);
-  for (const item of parseIndexFile(typesText))
-    addEntry(best, typeEntry(item), version);
-  for (const item of parseIndexFile(membersText))
-    addEntry(best, memberEntry(item), version);
+
+  await processIndex(base, PACKAGE_INDEX, (item) =>
+    addEntry(best, packageEntry(item), version),
+  );
+  await processIndex(base, TYPE_INDEX, (item) =>
+    addEntry(best, typeEntry(item), version),
+  );
+  await processIndex(base, MEMBER_INDEX, (item) =>
+    addEntry(best, memberEntry(item), version),
+  );
 
   if (best.size < 1000)
     throw new Error("The Javadoc search index came back unexpectedly small");
