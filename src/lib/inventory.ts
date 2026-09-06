@@ -263,27 +263,40 @@ async function download(version: string): Promise<Inventory> {
 }
 
 // Parsing the cache file costs several megabytes of transient JSON, so the
-// result is held in memory per version for the lifetime of the process.
-const memoryInventory = new Map<string, Inventory>();
+// ~33,000-entry result is held in memory for the lifetime of the process —
+// but only for one version at a time. The version is a preference the user
+// can change, and a process can outlive several commands, so a Map here
+// would keep every version ever selected in memory forever; switching
+// between all three real builds that way was enough on its own to exhaust a
+// worker's heap without a single entry actually being read.
+let memoryInventory: Inventory | null = null;
 
 export async function loadInventory(version: string): Promise<Inventory> {
-  const remembered = memoryInventory.get(version);
-  if (remembered && Date.now() - remembered.fetchedAt < CACHE_TTL)
-    return remembered;
+  if (
+    memoryInventory?.version === version &&
+    Date.now() - memoryInventory.fetchedAt < CACHE_TTL
+  )
+    return memoryInventory;
+
+  // Dropping the reference to the previous version's ~33,000 entries before
+  // building the next version's, instead of only after, gives the collector
+  // a chance to free it during that build instead of holding both at once.
+  if (memoryInventory && memoryInventory.version !== version)
+    memoryInventory = null;
 
   const cached = await readCache(version);
   if (cached && Date.now() - cached.fetchedAt < CACHE_TTL) {
-    memoryInventory.set(version, cached);
+    memoryInventory = cached;
     return cached;
   }
 
   try {
     const fresh = await download(version);
-    memoryInventory.set(version, fresh);
+    memoryInventory = fresh;
     return fresh;
   } catch (error) {
     if (cached) {
-      memoryInventory.set(version, cached);
+      memoryInventory = cached;
       return cached;
     }
     throw error;
@@ -292,6 +305,6 @@ export async function loadInventory(version: string): Promise<Inventory> {
 
 export async function refreshInventory(version: string): Promise<Inventory> {
   const fresh = await download(version);
-  memoryInventory.set(version, fresh);
+  memoryInventory = fresh;
   return fresh;
 }

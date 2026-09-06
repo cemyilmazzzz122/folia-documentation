@@ -69,19 +69,26 @@ async function readStored(version: string): Promise<StoredMeta | null> {
   }
 }
 
-const cached = new Map<string, StoredMeta>();
+// One version at a time, same reasoning as memoryInventory in inventory.ts:
+// the version is a user preference that can change within a long-lived
+// process, and a Map keyed by version would keep every version ever selected
+// in memory for the rest of the session instead of releasing the old one.
+let cachedMeta: (StoredMeta & { version: string }) | null = null;
 
 async function ensureStored(
   version: string,
   force = false,
 ): Promise<StoredMeta> {
-  const remembered = cached.get(version);
-  if (remembered && !force && Date.now() - remembered.fetchedAt < META_TTL)
-    return remembered;
+  if (
+    cachedMeta?.version === version &&
+    !force &&
+    Date.now() - cachedMeta.fetchedAt < META_TTL
+  )
+    return cachedMeta;
 
   const stored = force ? null : await readStored(version);
   if (stored && Date.now() - stored.fetchedAt < META_TTL) {
-    cached.set(version, stored);
+    cachedMeta = { ...stored, version };
     return stored;
   }
 
@@ -89,20 +96,19 @@ async function ensureStored(
     const fresh = await download(version);
     await mkdir(environment.supportPath, { recursive: true });
     await writeFile(metaFile(version), JSON.stringify(fresh), "utf8");
-    cached.set(version, fresh);
+    cachedMeta = { ...fresh, version };
     return fresh;
   } catch (error) {
     const stale = stored ?? (await readStored(version));
     if (!stale) throw error;
-    cached.set(version, stale);
+    cachedMeta = { ...stale, version };
     return stale;
   }
 }
 
-// Keyed by version and entry count: the entry count changes whenever the
-// inventory itself is refreshed, which is the only time this needs to redo
-// the 30,000-entry scan instead of returning what it already built.
-const memoryMeta = new Map<string, MetaIndex>();
+// Same one-slot reasoning again: this holds a full deprecated/legacy map over
+// every entry, so it is kept for one (version, entry count) combination only.
+let memoryMeta: { key: string; meta: MetaIndex } | null = null;
 
 export async function ensureMeta(
   entries: DocEntry[],
@@ -111,10 +117,7 @@ export async function ensureMeta(
 ): Promise<MetaIndex> {
   const stored = await ensureStored(version, force);
   const cacheKey = `${version}:${stored.fetchedAt}:${entries.length}`;
-  if (!force) {
-    const remembered = memoryMeta.get(cacheKey);
-    if (remembered) return remembered;
-  }
+  if (!force && memoryMeta?.key === cacheKey) return memoryMeta.meta;
 
   const deprecated = new Set(stored.deprecated);
 
@@ -129,6 +132,6 @@ export async function ensureMeta(
       };
   }
 
-  memoryMeta.set(cacheKey, meta);
+  memoryMeta = { key: cacheKey, meta };
   return meta;
 }
