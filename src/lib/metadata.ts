@@ -20,25 +20,38 @@ function safeDecode(value: string): string {
 }
 
 function metaFile(version: string): string {
-  return path.join(environment.supportPath, `meta-${CACHE_SCHEMA}-${version}.json`);
+  return path.join(
+    environment.supportPath,
+    `meta-${CACHE_SCHEMA}-${version}.json`,
+  );
 }
 
 // deprecated-list.html links straight back to the anchor of every deprecated
 // class and member, in the exact page/anchor shape the search index already
-// uses, so no separate id scheme is needed to match it against an entry.
+// uses. Only the "col-summary-item-name" link is the deprecated element's own
+// link, though: the "col-last" description next to it is free Javadoc text
+// ("use Player.setResourcePack(...) instead") that can itself link to
+// unrelated, non-deprecated classes, so scanning the whole page for hrefs
+// would misfile something like Player itself as deprecated.
 async function download(version: string): Promise<StoredMeta> {
   const response = await fetch(docsBase(version) + "deprecated-list.html", {
     signal: timeoutSignal(),
   });
   if (!response.ok)
-    throw new Error(`Failed to download deprecated-list.html (HTTP ${response.status})`);
+    throw new Error(
+      `Failed to download deprecated-list.html (HTTP ${response.status})`,
+    );
   const html = await response.text();
 
   const deprecated = new Set<string>();
-  const pattern = /href="([^"#]+)\.html(?:#([^"]+))?"/g;
-  for (const match of html.matchAll(pattern)) {
-    const page = `${match[1]}.html`;
-    const anchor = match[2] ? safeDecode(match[2]) : "class-description";
+  const itemPattern =
+    /<div class="col-summary-item-name[^"]*">([\s\S]*?)<\/div>/g;
+  const hrefPattern = /href="([^"#]+)\.html(?:#([^"]+))?"/;
+  for (const item of html.matchAll(itemPattern)) {
+    const href = hrefPattern.exec(item[1]);
+    if (!href) continue;
+    const page = `${href[1]}.html`;
+    const anchor = href[2] ? safeDecode(href[2]) : "class-description";
     deprecated.add(`${page}|${anchor}`);
   }
 
@@ -58,7 +71,10 @@ async function readStored(version: string): Promise<StoredMeta | null> {
 
 const cached = new Map<string, StoredMeta>();
 
-async function ensureStored(version: string, force = false): Promise<StoredMeta> {
+async function ensureStored(
+  version: string,
+  force = false,
+): Promise<StoredMeta> {
   const remembered = cached.get(version);
   if (remembered && !force && Date.now() - remembered.fetchedAt < META_TTL)
     return remembered;
@@ -107,7 +123,10 @@ export async function ensureMeta(
     const isDeprecated = deprecated.has(`${entry.page}|${entry.anchor}`);
     const isLegacyScheduler = entry.pkg === "org.bukkit.scheduler";
     if (isDeprecated || isLegacyScheduler)
-      meta[entry.name] = { deprecated: isDeprecated, legacyScheduler: isLegacyScheduler };
+      meta[entry.name] = {
+        deprecated: isDeprecated,
+        legacyScheduler: isLegacyScheduler,
+      };
   }
 
   memoryMeta.set(cacheKey, meta);

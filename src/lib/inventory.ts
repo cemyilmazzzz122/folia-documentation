@@ -1,5 +1,6 @@
 import { environment } from "@raycast/api";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { createWriteStream } from "node:fs";
+import { mkdir, readFile, rename } from "node:fs/promises";
 import path from "node:path";
 import { CACHE_SCHEMA, docsBase, timeoutSignal } from "./constants";
 import { DocEntry, EntryKind, Inventory, SectionId } from "./types";
@@ -64,7 +65,10 @@ function resolveSection(pkg: string): SectionId {
     return "events";
   if (pkg.startsWith("org.bukkit.entity")) return "entities";
   if (pkg.startsWith("org.bukkit.inventory")) return "inventory";
-  if (pkg.startsWith("io.papermc.paper") || pkg.startsWith("com.destroystokyo.paper"))
+  if (
+    pkg.startsWith("io.papermc.paper") ||
+    pkg.startsWith("com.destroystokyo.paper")
+  )
     return "paper";
   if (pkg.startsWith("org.bukkit")) return "core";
   return "utils";
@@ -89,8 +93,7 @@ function isDocumentedPackage(pkg: string): boolean {
 
 function typeEntry(item: IndexItem): DocEntry | null {
   const pkg = item.p;
-  if (!pkg || item.k === SUMMARY_KIND || !isDocumentedPackage(pkg))
-    return null;
+  if (!pkg || item.k === SUMMARY_KIND || !isDocumentedPackage(pkg)) return null;
 
   const base = TYPE_KINDS[item.k ?? "12"] ?? "class";
   const section = resolveSection(pkg);
@@ -162,14 +165,24 @@ function packageEntry(item: IndexItem): DocEntry | null {
   };
 }
 
-function deduplicate(entries: DocEntry[]): DocEntry[] {
-  const best = new Map<string, DocEntry>();
-  for (const entry of entries) {
-    const current = best.get(entry.name);
-    if (!current || entry.name.length < current.name.length)
-      best.set(entry.name, entry);
-  }
-  return [...best.values()];
+// Deduplicating straight into the target map as each index file is processed,
+// instead of concatenating all three into one flat array first, keeps only
+// one raw parsed index in memory at a time instead of all three at once.
+function addEntry(
+  best: Map<string, DocEntry>,
+  entry: DocEntry | null,
+  base: string,
+  version: string,
+): void {
+  if (!entry) return;
+  const finished: DocEntry = {
+    ...entry,
+    version,
+    url: base + entry.page + "#" + entry.anchor,
+  };
+  const current = best.get(finished.name);
+  if (!current || finished.name.length < current.name.length)
+    best.set(finished.name, finished);
 }
 
 async function fetchText(base: string, file: string): Promise<string> {
@@ -197,38 +210,61 @@ async function readCache(version: string): Promise<Inventory | null> {
   }
 }
 
+// JSON.stringify on the whole ~33,000-entry inventory builds one multi-megabyte
+// string (and the recursive serializer's own scratch space on top of it) in a
+// single call, which is exactly the kind of allocation that can tip a tight
+// heap over the edge. Writing entry-by-entry keeps only one entry's JSON in
+// memory at a time; the temp-file rename keeps a crash mid-write from leaving
+// a truncated cache behind.
 async function writeCache(inventory: Inventory): Promise<void> {
   await mkdir(environment.supportPath, { recursive: true });
-  await writeFile(cachePath(inventory.version), JSON.stringify(inventory), "utf8");
+  const file = cachePath(inventory.version);
+  const tmpFile = `${file}.tmp`;
+
+  await new Promise<void>((resolve, reject) => {
+    const stream = createWriteStream(tmpFile, { encoding: "utf8" });
+    stream.on("error", reject);
+    stream.on("finish", resolve);
+
+    stream.write(
+      `{"version":${JSON.stringify(inventory.version)},"fetchedAt":${inventory.fetchedAt},"entries":[`,
+    );
+    inventory.entries.forEach((entry, index) => {
+      stream.write((index > 0 ? "," : "") + JSON.stringify(entry));
+    });
+    stream.write("]}");
+    stream.end();
+  });
+
+  await rename(tmpFile, file);
 }
 
 async function download(version: string): Promise<Inventory> {
   const base = docsBase(version);
-  const [types, members, packages] = await Promise.all([
+  // Fetched in parallel (the network round trip, not the parsing, dominates
+  // here), but parsed and folded into `best` one file at a time below so the
+  // ~30,000-item package/type/member arrays never all coexist in memory.
+  const [packagesText, typesText, membersText] = await Promise.all([
+    fetchText(base, PACKAGE_INDEX),
     fetchText(base, TYPE_INDEX),
     fetchText(base, MEMBER_INDEX),
-    fetchText(base, PACKAGE_INDEX),
   ]);
 
-  const entries = [
-    ...parseIndexFile(packages).map(packageEntry),
-    ...parseIndexFile(types).map(typeEntry),
-    ...parseIndexFile(members).map(memberEntry),
-  ]
-    .filter((entry): entry is DocEntry => entry !== null)
-    .map((entry) => ({
-      ...entry,
-      version,
-      url: base + entry.page + "#" + entry.anchor,
-    }));
+  const best = new Map<string, DocEntry>();
+  for (const item of parseIndexFile(packagesText))
+    addEntry(best, packageEntry(item), base, version);
+  for (const item of parseIndexFile(typesText))
+    addEntry(best, typeEntry(item), base, version);
+  for (const item of parseIndexFile(membersText))
+    addEntry(best, memberEntry(item), base, version);
 
-  if (entries.length < 1000)
+  if (best.size < 1000)
     throw new Error("The Javadoc search index came back unexpectedly small");
 
   const inventory: Inventory = {
     version,
     fetchedAt: Date.now(),
-    entries: deduplicate(entries).sort((a, b) => a.name.localeCompare(b.name)),
+    entries: [...best.values()].sort((a, b) => a.name.localeCompare(b.name)),
   };
   await writeCache(inventory);
   return inventory;

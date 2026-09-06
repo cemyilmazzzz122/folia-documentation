@@ -19,7 +19,8 @@ const KIND_WEIGHT: Record<EntryKind, number> = {
 const RESULT_LIMIT = 60;
 const BROWSE_LIMIT = 300;
 
-const PACKAGE_PREFIX = /^(?:org\.bukkit|io\.papermc\.paper|com\.destroystokyo\.paper)\./;
+const PACKAGE_PREFIX =
+  /^(?:org\.bukkit|io\.papermc\.paper|com\.destroystokyo\.paper|org\.spigotmc)\./;
 
 function lastSegment(name: string): string {
   const hash = name.lastIndexOf("#");
@@ -174,10 +175,19 @@ function score(
   return base + KIND_WEIGHT[entry.kind] * 4 - Math.min(short.length, 60) / 10;
 }
 
-function byProminence(a: DocEntry, b: DocEntry): number {
-  return (
-    KIND_WEIGHT[b.kind] - KIND_WEIGHT[a.kind] || a.name.localeCompare(b.name)
-  );
+export type IsDeprecated = (entry: DocEntry) => boolean;
+
+const notDeprecated: IsDeprecated = () => false;
+
+// Deprecated entries are pushed after everything else of the same rank instead
+// of being excluded, so a browse or member list is not led alphabetically by
+// whichever obsolete class happens to start early (co.aikar.timings.* sorts
+// before io.papermc/org.bukkit and is almost entirely deprecated).
+function byProminence(isDeprecated: IsDeprecated) {
+  return (a: DocEntry, b: DocEntry): number =>
+    KIND_WEIGHT[b.kind] - KIND_WEIGHT[a.kind] ||
+    Number(isDeprecated(a)) - Number(isDeprecated(b)) ||
+    a.name.localeCompare(b.name);
 }
 
 function isTopLevel(entry: DocEntry): boolean {
@@ -190,11 +200,15 @@ function isTopLevel(entry: DocEntry): boolean {
 export function browseEntries(
   entries: DocEntry[],
   scoped: boolean,
+  isDeprecated: IsDeprecated = notDeprecated,
 ): DocEntry[] {
   const shown = scoped ? entries : entries.filter(isTopLevel);
-  return [...shown]
-    .sort(scoped ? (a, b) => a.name.localeCompare(b.name) : byProminence)
-    .slice(0, BROWSE_LIMIT);
+  const compare = scoped
+    ? (a: DocEntry, b: DocEntry) =>
+        Number(isDeprecated(a)) - Number(isDeprecated(b)) ||
+        a.name.localeCompare(b.name)
+    : byProminence(isDeprecated);
+  return [...shown].sort(compare).slice(0, BROWSE_LIMIT);
 }
 
 export function searchEntries(entries: DocEntry[], query: string): DocEntry[] {
@@ -221,16 +235,19 @@ export function searchEntries(entries: DocEntry[], query: string): DocEntry[] {
     .map((item) => item.entry);
 }
 
-export function membersOf(entries: DocEntry[], parent: DocEntry): DocEntry[] {
+export function membersOf(
+  entries: DocEntry[],
+  parent: DocEntry,
+  isDeprecated: IsDeprecated = notDeprecated,
+): DocEntry[] {
+  const compare = byProminence(isDeprecated);
   if (parent.kind === "package") {
     return entries
       .filter(
         (entry) =>
           entry.pkg === parent.pkg && entry.kind !== "package" && !entry.owner,
       )
-      .sort(byProminence);
+      .sort(compare);
   }
-  return entries
-    .filter((entry) => entry.owner === parent.name)
-    .sort(byProminence);
+  return entries.filter((entry) => entry.owner === parent.name).sort(compare);
 }

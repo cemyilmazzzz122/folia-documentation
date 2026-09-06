@@ -84,7 +84,14 @@ function splitSections(page: GuidePage, contentHtml: string): GuideSection[] {
 
   function flush(): void {
     const html = buffer.join("").trim();
-    if (html) sections.push({ page: page.page, group: page.group, anchor, title, html });
+    if (html)
+      sections.push({
+        page: page.page,
+        group: page.group,
+        anchor,
+        title,
+        html,
+      });
     buffer = [];
   }
 
@@ -214,7 +221,8 @@ export async function guideHtml(entry: DocEntry): Promise<string | null> {
   const guides = await ensureGuides();
   return (
     guides.sections.find(
-      (section) => section.page === entry.page && section.anchor === entry.anchor,
+      (section) =>
+        section.page === entry.page && section.anchor === entry.anchor,
     )?.html ?? null
   );
 }

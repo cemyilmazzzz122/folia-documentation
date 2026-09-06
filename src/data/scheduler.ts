@@ -13,8 +13,10 @@ export interface SchedulerApi {
 export const SCHEDULER_APIS: SchedulerApi[] = [
   {
     name: "GlobalRegionScheduler",
-    javadocName: "io.papermc.paper.threadedregions.scheduler.GlobalRegionScheduler",
-    tagline: "Runs on the global region: server shutdown, world load/unload, command registration.",
+    javadocName:
+      "io.papermc.paper.threadedregions.scheduler.GlobalRegionScheduler",
+    tagline:
+      "Runs on the global region: server shutdown, world load/unload, command registration.",
     whenToUse:
       "Use this for logic that is not tied to any single location, such as reading server-wide state or reloading a config. It never touches per-world or per-entity state safely — use RegionScheduler or EntityScheduler for that.",
     accessor: "Bukkit.getGlobalRegionScheduler()",
@@ -56,13 +58,14 @@ export const SCHEDULER_APIS: SchedulerApi[] = [
   {
     name: "EntityScheduler",
     javadocName: "io.papermc.paper.threadedregions.scheduler.EntityScheduler",
-    tagline: "Runs on whichever region currently owns a specific entity, and follows it across regions.",
+    tagline:
+      "Runs on whichever region currently owns a specific entity, and follows it across regions.",
     whenToUse:
       "Use this for any repeating or delayed logic tied to one entity — a boss fight timer, a follow-up message, a custom AI tick — instead of RegionScheduler, since the entity (and therefore its owning region) can move between calls. Every method takes a retired callback that runs if the entity is removed before the task fires.",
     accessor: "entity.getScheduler()",
     code: [
       "player.getScheduler().run(plugin, task -> {",
-      "    player.sendMessage(\"Hello from the entity's own region!\");",
+      '    player.sendMessage("Hello from the entity\'s own region!");',
       "}, null /* retired: runs instead, if the entity is gone */);",
       "",
       "player.getScheduler().runDelayed(plugin, task -> {",

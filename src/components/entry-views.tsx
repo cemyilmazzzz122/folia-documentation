@@ -52,6 +52,10 @@ function sectionTitle(entry: DocEntry): string {
   );
 }
 
+function isDeprecated(ctx: ViewContext, entry: DocEntry): boolean {
+  return Boolean(ctx.meta[entry.name]?.deprecated);
+}
+
 function hasMembers(entry: DocEntry): boolean {
   return isType(entry.kind) || entry.kind === "package";
 }
@@ -118,7 +122,9 @@ function EntryActions({
   extra?: ReactNode;
 }) {
   const { push } = useNavigation();
-  const members = hasMembers(entry) ? membersOf(ctx.entries, entry) : [];
+  const members = hasMembers(entry)
+    ? membersOf(ctx.entries, entry, (candidate) => isDeprecated(ctx, candidate))
+    : [];
   const references = (details?.references ?? [])
     .map((name) => ctx.entries.find((candidate) => candidate.name === name))
     .filter(
@@ -392,7 +398,9 @@ export function MemberList({
   parent: DocEntry;
   ctx: ViewContext;
 }) {
-  const members = membersOf(ctx.entries, parent);
+  const members = membersOf(ctx.entries, parent, (candidate) =>
+    isDeprecated(ctx, candidate),
+  );
 
   return (
     <EntryListView
@@ -482,7 +490,11 @@ export function EntryDetail({
           <Detail.Metadata.Link
             title="Documentation"
             target={entry.url}
-            text={entry.kind === "guide" ? "Open on docs.papermc.io" : "Open Javadoc"}
+            text={
+              entry.kind === "guide"
+                ? "Open on docs.papermc.io"
+                : "Open Javadoc"
+            }
           />
         </Detail.Metadata>
       }

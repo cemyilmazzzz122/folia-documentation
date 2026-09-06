@@ -1,5 +1,9 @@
 import { Action, ActionPanel, Color, Icon, List } from "@raycast/api";
-import { LEGACY_SCHEDULER_NOTICE, SCHEDULER_APIS, SchedulerApi } from "./data/scheduler";
+import {
+  LEGACY_SCHEDULER_NOTICE,
+  SCHEDULER_APIS,
+  SchedulerApi,
+} from "./data/scheduler";
 import { docsBase } from "./lib/constants";
 import { getPreferences } from "./lib/preferences";
 
@@ -24,8 +28,14 @@ export default function SchedulerCheatsheet() {
   const { docsVersion } = getPreferences();
 
   return (
-    <List isShowingDetail searchBarPlaceholder="Browse Folia's region-aware scheduler APIs">
-      <List.Section title="Region Schedulers" subtitle={`${SCHEDULER_APIS.length}`}>
+    <List
+      isShowingDetail
+      searchBarPlaceholder="Browse Folia's region-aware scheduler APIs"
+    >
+      <List.Section
+        title="Region Schedulers"
+        subtitle={`${SCHEDULER_APIS.length}`}
+      >
         {SCHEDULER_APIS.map((api) => (
           <List.Item
             key={api.name}

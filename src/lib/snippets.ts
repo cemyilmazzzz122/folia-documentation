@@ -27,7 +27,12 @@ export function searchSourceUrl(entry: DocEntry): string | null {
   const target = topLevelType(entry);
   if (!target) return null;
 
-  const query = encodeURIComponent(`repo:PaperMC/Paper path:paper-api "class ${target.simple}"`);
+  // Most of the Bukkit/Paper API is interfaces, not classes ("interface
+  // Player", not "class Player"), so a literal "class X" search misses most
+  // targets; matching the file name instead works regardless of kind.
+  const query = encodeURIComponent(
+    `repo:PaperMC/Paper path:paper-api filename:${target.simple}.java`,
+  );
   return `https://github.com/search?q=${query}&type=code`;
 }
 
@@ -74,7 +79,7 @@ function templates(): Map<string, string> {
     ],
     [
       "org.bukkit.command.PluginCommand#setExecutor(org.bukkit.command.CommandExecutor)",
-      "getCommand(\"mycommand\").setExecutor(this);",
+      'getCommand("mycommand").setExecutor(this);',
     ],
   ]);
 }

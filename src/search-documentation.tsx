@@ -116,6 +116,8 @@ export default function SearchDocumentation() {
 
   const sections = useMemo<EntrySection[]>(() => {
     const parsed = parseQuery(query);
+    const isDeprecated = (entry: DocEntry): boolean =>
+      Boolean(meta?.[entry.name]?.deprecated);
 
     let scope =
       section === "all"
@@ -149,7 +151,11 @@ export default function SearchDocumentation() {
     }
     if (filterLabel) {
       return [
-        { title: "Results", subtitle, entries: browseEntries(scope, true) },
+        {
+          title: "Results",
+          subtitle,
+          entries: browseEntries(scope, true, isDeprecated),
+        },
       ];
     }
 
@@ -162,9 +168,11 @@ export default function SearchDocumentation() {
     const recent = pick(recents ?? []).filter(
       (entry) => !pinned.includes(entry),
     );
-    const browsed = browseEntries(scope, section !== "all").filter(
-      (entry) => !pinned.includes(entry) && !recent.includes(entry),
-    );
+    const browsed = browseEntries(
+      scope,
+      section !== "all",
+      isDeprecated,
+    ).filter((entry) => !pinned.includes(entry) && !recent.includes(entry));
 
     return [
       { title: "Favorites", entries: pinned },
@@ -178,7 +186,7 @@ export default function SearchDocumentation() {
         entries: browsed,
       },
     ].filter((item) => item.entries.length > 0);
-  }, [entries, section, query, favorites, recents, docsVersion]);
+  }, [entries, section, query, favorites, recents, docsVersion, meta]);
 
   async function refresh() {
     const toast = await showToast({

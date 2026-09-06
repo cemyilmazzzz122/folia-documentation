@@ -88,7 +88,10 @@ export function sliceAround(html: string, anchor: string): string | null {
 
 function prepare(html: string, base: string): string {
   return html
-    .replace(/<a class="(?:headerlink|anchor-link|sl-anchor-link)"[\s\S]*?<\/a>/g, "")
+    .replace(
+      /<a class="(?:headerlink|anchor-link|sl-anchor-link)"[\s\S]*?<\/a>/g,
+      "",
+    )
     .replace(
       /(href|src)="(?!https?:|mailto:|data:)([^"]+)"/g,
       (_, attribute, target) => `${attribute}="${new URL(target, base).href}"`,
@@ -206,7 +209,8 @@ function collectReferences(markdown: string, base: string): string[] {
     if (
       !type.startsWith("org.bukkit") &&
       !type.startsWith("io.papermc.paper") &&
-      !type.startsWith("com.destroystokyo.paper")
+      !type.startsWith("com.destroystokyo.paper") &&
+      !type.startsWith("org.spigotmc")
     )
       continue;
     found.add(anchor ? `${type}#${safeDecode(anchor)}` : type);
@@ -285,7 +289,9 @@ export async function clearDetailsCache(): Promise<void> {
   await discardPages();
 }
 
-export function documentationPages(entries: DocEntry[]): { page: string; base: string }[] {
+export function documentationPages(
+  entries: DocEntry[],
+): { page: string; base: string }[] {
   const seen = new Set<string>();
   const pages: { page: string; base: string }[] = [];
 
