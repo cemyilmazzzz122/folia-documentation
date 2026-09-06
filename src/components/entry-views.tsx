@@ -12,12 +12,14 @@ import { usePromise } from "@raycast/utils";
 import { ReactNode, useState } from "react";
 import { KIND_COLOR, KIND_ICON } from "../lib/appearance";
 import { DocDetails, loadDetails } from "../lib/docpage";
+import { entryUrl } from "../lib/entry-url";
 import { PrimaryAction } from "../lib/preferences";
 import { membersOf } from "../lib/search";
 import {
   boilerplate,
   importStatement,
   markdownLink,
+  migrationFor,
   searchSourceUrl,
 } from "../lib/snippets";
 import {
@@ -66,6 +68,17 @@ function legacySchedulerNotice(flagged: boolean | undefined): string | null {
     : null;
 }
 
+function migrationMarkdown(entry: DocEntry): string | null {
+  const migration = migrationFor(entry);
+  if (!migration) return null;
+
+  const blocks = migration.equivalents.map(
+    (equivalent) =>
+      `**${equivalent.api}**\n\n\`\`\`java\n${equivalent.code}\n\`\`\``,
+  );
+  return ["## Folia Equivalent", migration.guidance, ...blocks].join("\n\n");
+}
+
 function detailMarkdown(
   entry: DocEntry,
   details: DocDetails | undefined,
@@ -81,6 +94,7 @@ function detailMarkdown(
     legacySchedulerNotice(badges?.legacyScheduler),
     signature,
     details?.markdown ?? "",
+    migrationMarkdown(entry),
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -132,6 +146,7 @@ function EntryActions({
         Boolean(candidate) && candidate?.name !== entry.name,
     );
   const snippet = boilerplate(entry);
+  const migration = migrationFor(entry);
   const source = searchSourceUrl(entry);
   const importLine = importStatement(entry);
   const isFavorite = ctx.favorites.includes(entry.name);
@@ -148,7 +163,7 @@ function EntryActions({
   );
   const openInBrowser = (
     <Action.OpenInBrowser
-      url={entry.url}
+      url={entryUrl(entry)}
       shortcut={Keyboard.Shortcut.Common.Open}
       onOpen={() => ctx.addRecent(entry.name)}
     />
@@ -184,6 +199,19 @@ function EntryActions({
           />
         ) : null}
       </ActionPanel.Section>
+
+      {migration && (
+        <ActionPanel.Section title="Folia Migration">
+          {migration.equivalents.map((equivalent) => (
+            <Action.CopyToClipboard
+              key={equivalent.api}
+              title={`Copy as ${equivalent.api}`}
+              content={equivalent.code}
+              icon={Icon.Wand}
+            />
+          ))}
+        </ActionPanel.Section>
+      )}
 
       <ActionPanel.Section>
         {snippet && (
@@ -228,7 +256,7 @@ function EntryActions({
         />
         <Action.CopyToClipboard
           title="Copy Documentation URL"
-          content={entry.url}
+          content={entryUrl(entry)}
           shortcut={Keyboard.Shortcut.Common.CopyDeeplink}
         />
         {source ? (
@@ -489,7 +517,7 @@ export function EntryDetail({
           ) : null}
           <Detail.Metadata.Link
             title="Documentation"
-            target={entry.url}
+            target={entryUrl(entry)}
             text={
               entry.kind === "guide"
                 ? "Open on docs.papermc.io"

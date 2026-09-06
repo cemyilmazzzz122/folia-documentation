@@ -38,6 +38,13 @@
       "subtitle": "Folia",
       "description": "Browse GlobalRegionScheduler, RegionScheduler, EntityScheduler and AsyncScheduler with copyable examples",
       "mode": "view"
+    },
+    {
+      "name": "scheduler-code-builder",
+      "title": "Scheduler Code Builder",
+      "subtitle": "Folia",
+      "description": "Fill in a form and copy the matching GlobalRegionScheduler, RegionScheduler, EntityScheduler or AsyncScheduler Java code",
+      "mode": "view"
     }
   ],
   "dependencies": {
@@ -123,6 +130,11 @@
       "name": "read-entry",
       "title": "Read Folia Documentation Entry",
       "description": "Returns the full documentation for one Folia type or member, optionally with the list of a type's own fields, constants and methods."
+    },
+    {
+      "name": "migrate-scheduler",
+      "title": "Migrate BukkitScheduler Call to Folia",
+      "description": "Given a legacy org.bukkit.scheduler.BukkitScheduler method name (runTask, runTaskLater, runTaskTimer, or their *Asynchronously variants), returns the real Folia scheduler API equivalents built from the actual Javadoc signatures, plus guidance on which one to pick. Use this whenever converting or explaining how to port Bukkit/Paper plugin code to Folia."
     }
   ]
 }

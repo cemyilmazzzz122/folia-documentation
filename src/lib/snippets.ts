@@ -1,5 +1,20 @@
-import { SCHEDULER_APIS } from "../data/scheduler";
+import {
+  findMigration,
+  SCHEDULER_APIS,
+  SchedulerMigration,
+} from "../data/scheduler";
+import { entryUrl } from "./entry-url";
 import { DocEntry, isType } from "./types";
+
+const BUKKIT_SCHEDULER = "org.bukkit.scheduler.BukkitScheduler";
+
+// entry.display for a member is "BukkitScheduler.runTaskTimer(Plugin, Runnable, long, long)",
+// so the short method name is what is between the owning type's dot and the parameter list.
+export function migrationFor(entry: DocEntry): SchedulerMigration | undefined {
+  if (entry.owner !== BUKKIT_SCHEDULER) return undefined;
+  const shortName = entry.display.split(".").pop()?.split("(")[0];
+  return shortName ? findMigration(shortName) : undefined;
+}
 
 function topLevelType(entry: DocEntry): { pkg: string; simple: string } | null {
   const type = entry.owner || (isType(entry.kind) ? entry.name : "");
@@ -12,7 +27,7 @@ function topLevelType(entry: DocEntry): { pkg: string; simple: string } | null {
 
 export function markdownLink(entry: DocEntry): string {
   const label = entry.kind === "guide" ? entry.display : entry.name;
-  return `[${label}](${entry.url})`;
+  return `[${label}](${entryUrl(entry)})`;
 }
 
 export function importStatement(entry: DocEntry): string | null {

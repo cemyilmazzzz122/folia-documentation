@@ -1,4 +1,5 @@
 import { loadDetails } from "../lib/docpage";
+import { entryUrl } from "../lib/entry-url";
 import { loadGuides } from "../lib/guides";
 import { loadInventory } from "../lib/inventory";
 import { ensureMeta } from "../lib/metadata";
@@ -53,10 +54,14 @@ export default async function readEntry(input: Input) {
     example: details.example,
     references: details.references,
     members: input.includeMembers
-      ? membersOf(inventory.entries, entry)
+      ? membersOf(
+          inventory.entries,
+          entry,
+          (candidate) => meta[candidate.name]?.deprecated ?? false,
+        )
           .slice(0, MEMBER_LIMIT)
           .map((member) => member.display)
       : undefined,
-    url: entry.url,
+    url: entryUrl(entry),
   };
 }

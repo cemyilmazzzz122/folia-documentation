@@ -102,3 +102,137 @@ export const SCHEDULER_APIS: SchedulerApi[] = [
 
 export const LEGACY_SCHEDULER_NOTICE =
   "`org.bukkit.scheduler.BukkitScheduler` is Paper's original single-threaded scheduler. On Folia most of its methods (`runTask`, `runTaskLater`, `runTaskTimer` and their async variants) throw `UnsupportedOperationException` — use GlobalRegionScheduler, RegionScheduler, EntityScheduler or AsyncScheduler instead.";
+
+export interface SchedulerEquivalent {
+  api: string;
+  code: string;
+}
+
+export interface SchedulerMigration {
+  /** The BukkitScheduler method this replaces, e.g. "runTaskTimer". */
+  bukkitMethod: string;
+  /**
+   * True for the *Asynchronously variants: they never touched world/entity
+   * state to begin with, so AsyncScheduler is the one correct replacement.
+   * False for the sync variants, where BukkitScheduler's signature carries no
+   * information about *what* the task touches, so all three region-aware
+   * schedulers are shown — the right one depends on the task's own body.
+   */
+  deterministic: boolean;
+  guidance: string;
+  equivalents: SchedulerEquivalent[];
+}
+
+const RUNNABLE_BODY = "task -> {\n        // your code\n    }";
+
+// Signatures taken from org.bukkit.scheduler.BukkitScheduler's own Javadoc,
+// paired with the equivalent io.papermc.paper.threadedregions.scheduler.*
+// call built from the signatures in SCHEDULER_APIS above.
+export const BUKKIT_MIGRATIONS: SchedulerMigration[] = [
+  {
+    bukkitMethod: "runTask(Plugin, Runnable)",
+    deterministic: false,
+    guidance:
+      "Runs once, next tick. Pick the scheduler that matches what the task itself touches — global state, a location, or an entity.",
+    equivalents: [
+      {
+        api: "GlobalRegionScheduler",
+        code: `Bukkit.getGlobalRegionScheduler().run(plugin, ${RUNNABLE_BODY});`,
+      },
+      {
+        api: "RegionScheduler",
+        code: `Bukkit.getRegionScheduler().run(plugin, location, ${RUNNABLE_BODY});`,
+      },
+      {
+        api: "EntityScheduler",
+        code: `entity.getScheduler().run(plugin, ${RUNNABLE_BODY}, null);`,
+      },
+    ],
+  },
+  {
+    bukkitMethod: "runTaskLater(Plugin, Runnable, long)",
+    deterministic: false,
+    guidance:
+      "Runs once after a delay in ticks. Pick the scheduler that matches what the task itself touches.",
+    equivalents: [
+      {
+        api: "GlobalRegionScheduler",
+        code: `Bukkit.getGlobalRegionScheduler().runDelayed(plugin, ${RUNNABLE_BODY}, delayTicks);`,
+      },
+      {
+        api: "RegionScheduler",
+        code: `Bukkit.getRegionScheduler().runDelayed(plugin, location, ${RUNNABLE_BODY}, delayTicks);`,
+      },
+      {
+        api: "EntityScheduler",
+        code: `entity.getScheduler().runDelayed(plugin, ${RUNNABLE_BODY}, null, delayTicks);`,
+      },
+    ],
+  },
+  {
+    bukkitMethod: "runTaskTimer(Plugin, Runnable, long, long)",
+    deterministic: false,
+    guidance:
+      "Runs repeatedly, in ticks. Pick the scheduler that matches what the task itself touches.",
+    equivalents: [
+      {
+        api: "GlobalRegionScheduler",
+        code: `Bukkit.getGlobalRegionScheduler().runAtFixedRate(plugin, ${RUNNABLE_BODY}, delayTicks, periodTicks);`,
+      },
+      {
+        api: "RegionScheduler",
+        code: `Bukkit.getRegionScheduler().runAtFixedRate(plugin, location, ${RUNNABLE_BODY}, delayTicks, periodTicks);`,
+      },
+      {
+        api: "EntityScheduler",
+        code: `entity.getScheduler().runAtFixedRate(plugin, ${RUNNABLE_BODY}, null, delayTicks, periodTicks);`,
+      },
+    ],
+  },
+  {
+    bukkitMethod: "runTaskAsynchronously(Plugin, Runnable)",
+    deterministic: true,
+    guidance:
+      "Already off the main thread on Paper, so this maps to AsyncScheduler one-to-one.",
+    equivalents: [
+      {
+        api: "AsyncScheduler",
+        code: `Bukkit.getAsyncScheduler().runNow(plugin, ${RUNNABLE_BODY});`,
+      },
+    ],
+  },
+  {
+    bukkitMethod: "runTaskLaterAsynchronously(Plugin, Runnable, long)",
+    deterministic: true,
+    guidance:
+      "AsyncScheduler's delay is real time, not ticks, so a tick delay needs converting (20 ticks = 1 second).",
+    equivalents: [
+      {
+        api: "AsyncScheduler",
+        code: `Bukkit.getAsyncScheduler().runDelayed(plugin, ${RUNNABLE_BODY}, delayTicks * 50L, TimeUnit.MILLISECONDS);`,
+      },
+    ],
+  },
+  {
+    bukkitMethod: "runTaskTimerAsynchronously(Plugin, Runnable, long, long)",
+    deterministic: true,
+    guidance:
+      "AsyncScheduler's delay and period are real time, not ticks (20 ticks = 1 second).",
+    equivalents: [
+      {
+        api: "AsyncScheduler",
+        code: `Bukkit.getAsyncScheduler().runAtFixedRate(plugin, ${RUNNABLE_BODY}, delayTicks * 50L, periodTicks * 50L, TimeUnit.MILLISECONDS);`,
+      },
+    ],
+  },
+];
+
+// BukkitScheduler's Javadoc entry keys members by their short display name
+// ("BukkitScheduler.runTaskTimer"), so migrations are looked up the same way.
+export function findMigration(
+  shortName: string,
+): SchedulerMigration | undefined {
+  return BUKKIT_MIGRATIONS.find(
+    (migration) => migration.bukkitMethod.split("(")[0] === shortName,
+  );
+}

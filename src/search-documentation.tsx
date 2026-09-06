@@ -1,4 +1,12 @@
-import { Action, Icon, Keyboard, List, showToast, Toast } from "@raycast/api";
+import {
+  Action,
+  Clipboard,
+  Icon,
+  Keyboard,
+  List,
+  showToast,
+  Toast,
+} from "@raycast/api";
 import { useLocalStorage, usePromise } from "@raycast/utils";
 import { useCallback, useMemo, useState } from "react";
 import {
@@ -7,6 +15,11 @@ import {
   ViewContext,
 } from "./components/entry-views";
 import { docsBase } from "./lib/constants";
+import {
+  gradleKotlinDsl,
+  mavenXml,
+  resolveArtifactVersion,
+} from "./lib/dependency";
 import {
   clearDetailsCache,
   documentationPages,
@@ -232,6 +245,27 @@ export default function SearchDocumentation() {
     }
   }
 
+  async function copyDependency(
+    format: (version: string) => string,
+    label: string,
+  ) {
+    const toast = await showToast({
+      style: Toast.Style.Animated,
+      title: `Resolving folia-api version`,
+    });
+    try {
+      const version = await resolveArtifactVersion(docsVersion);
+      await Clipboard.copy(format(version));
+      toast.style = Toast.Style.Success;
+      toast.title = `Copied ${label}`;
+      toast.message = `dev.folia:folia-api:${version}`;
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = "Could not resolve the folia-api version";
+      toast.message = error instanceof Error ? error.message : String(error);
+    }
+  }
+
   return (
     <EntryListView
       ctx={ctx}
@@ -279,6 +313,20 @@ export default function SearchDocumentation() {
           <Action.OpenInBrowser
             title="Open Documentation"
             url={docsBase(docsVersion)}
+          />
+          <Action
+            title="Copy Gradle Kotlin Dependency"
+            icon={Icon.Hammer}
+            shortcut={{ modifiers: ["cmd", "shift"], key: "g" }}
+            onAction={() =>
+              copyDependency(gradleKotlinDsl, "Gradle dependency")
+            }
+          />
+          <Action
+            title="Copy Maven Dependency"
+            icon={Icon.Hammer}
+            shortcut={{ modifiers: ["cmd", "shift"], key: "m" }}
+            onAction={() => copyDependency(mavenXml, "Maven dependency")}
           />
         </>
       }

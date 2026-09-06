@@ -112,7 +112,6 @@ function typeEntry(item: IndexItem): DocEntry | null {
     section,
     page,
     anchor: "class-description",
-    url: "",
   };
 }
 
@@ -144,7 +143,6 @@ function memberEntry(item: IndexItem): DocEntry | null {
     section: resolveSection(pkg),
     page,
     anchor,
-    url: "",
   };
 }
 
@@ -161,7 +159,6 @@ function packageEntry(item: IndexItem): DocEntry | null {
     section: resolveSection(item.l),
     page,
     anchor: "package-description",
-    url: "",
   };
 }
 
@@ -171,15 +168,10 @@ function packageEntry(item: IndexItem): DocEntry | null {
 function addEntry(
   best: Map<string, DocEntry>,
   entry: DocEntry | null,
-  base: string,
   version: string,
 ): void {
   if (!entry) return;
-  const finished: DocEntry = {
-    ...entry,
-    version,
-    url: base + entry.page + "#" + entry.anchor,
-  };
+  const finished: DocEntry = { ...entry, version };
   const current = best.get(finished.name);
   if (!current || finished.name.length < current.name.length)
     best.set(finished.name, finished);
@@ -252,11 +244,11 @@ async function download(version: string): Promise<Inventory> {
 
   const best = new Map<string, DocEntry>();
   for (const item of parseIndexFile(packagesText))
-    addEntry(best, packageEntry(item), base, version);
+    addEntry(best, packageEntry(item), version);
   for (const item of parseIndexFile(typesText))
-    addEntry(best, typeEntry(item), base, version);
+    addEntry(best, typeEntry(item), version);
   for (const item of parseIndexFile(membersText))
-    addEntry(best, memberEntry(item), base, version);
+    addEntry(best, memberEntry(item), version);
 
   if (best.size < 1000)
     throw new Error("The Javadoc search index came back unexpectedly small");

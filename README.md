@@ -18,7 +18,14 @@ Type any part of a name and the matching entries appear instantly.
 ### Folia-safety badges
 
 - **`not on Folia`** — an orange badge, with a warning at the top of the detail view, on every `org.bukkit.scheduler` entry. Most of `BukkitScheduler`'s methods throw `UnsupportedOperationException` on a regionised server; this is why `runTaskLater` "randomly" crashes a plugin that worked fine on Paper.
-- **`deprecated`** — a red badge, read straight out of the Javadoc's own `deprecated-list.html` rather than a hand-written table, so it never drifts from the actual API.
+- **`deprecated`** — a red badge, read straight out of the Javadoc's own `deprecated-list.html` rather than a hand-written table, so it never drifts from the actual API. Deprecated entries are also pushed to the end of same-rank browse and member lists instead of leading them alphabetically — `co.aikar.timings.*` (almost entirely deprecated) otherwise dominates the top of an empty search purely because "co" sorts before "io"/"org".
+
+### BukkitScheduler → Folia migration
+
+Opening any `BukkitScheduler` method (`runTask`, `runTaskLater`, `runTaskTimer`, or their `*Asynchronously` variants) adds a **Folia Equivalent** section to its detail view and a **Folia Migration** action group with one **Copy as _Scheduler_** action per real replacement, built from the actual signatures rather than a single guessed answer:
+
+- The `*Asynchronously` methods map one-to-one onto `AsyncScheduler` (they never touched world/entity state to begin with), with the tick-to-real-time conversion already done.
+- The synchronous methods carry no information about what the task itself touches, so all three region-aware options are offered — `GlobalRegionScheduler`, `RegionScheduler`, `EntityScheduler` — with guidance on which one actually fits.
 
 ### Actions
 
@@ -96,14 +103,33 @@ A second command dedicated to the four APIs that replace `BukkitScheduler` on Fo
 
 A fifth entry explains exactly why `BukkitScheduler` itself isn't in that list. <kbd>⌘</kbd><kbd>E</kbd> copies the example, <kbd>⌘</kbd><kbd>⇧</kbd><kbd>A</kbd> copies just the accessor line.
 
+### Scheduler Code Builder
+
+A third command turns the same four APIs into a form instead of a cheatsheet: pick a **Scope** (Global Region, Location/Block, Entity/Player, or Async), a **Timing** (Now, Delayed, or Fixed Rate), fill in the delay/period and the variable names you actually use, and copy or preview the exact, compiling Java call.
+
+- Scope and timing decide the method and parameter order for real — an Entity scope adds the optional "retired" callback parameter only `EntityScheduler` has, and an Async scope switches the delay/period fields to a real `TimeUnit` (milliseconds, seconds or minutes) instead of ticks, because that is genuinely how the underlying signatures differ.
+- The Region scope defaults to the `Location` overload; `RegionScheduler` also has a `World` + chunk-coordinate overload, noted in the field's help text rather than silently hidden.
+
+### Dependency Copier
+
+Two actions in the root list resolve the correct `dev.folia:folia-api` Maven coordinate for whichever **Folia Version** is selected in preferences (querying PaperMC's own repository metadata for the always-moving `26.2` build rather than shipping a version number that would go stale) and copy a ready `repositories { }` / `dependencies { }` block:
+
+| Action | Shortcut |
+| --- | --- |
+| Copy Gradle Kotlin Dependency | <kbd>⌘</kbd><kbd>⇧</kbd><kbd>G</kbd> |
+| Copy Maven Dependency | <kbd>⌘</kbd><kbd>⇧</kbd><kbd>M</kbd> |
+
 ## Raycast AI tools
 
-The extension exposes two tools to Raycast AI, so you can ask questions in AI Chat and get answers grounded in the real documentation instead of a guess:
+The extension exposes three tools to Raycast AI, so you can ask questions in AI Chat and get answers grounded in the real documentation instead of a guess:
 
 - **Search Folia Documentation** — searches the local index and returns signatures, deprecation status, whether an API is unsupported on Folia, descriptions and examples.
 - **Read Folia Documentation Entry** — returns the full documentation for one qualified name, optionally with a type's members.
+- **Migrate BukkitScheduler Call to Folia** — given a legacy scheduler method name, returns the real Folia equivalents and picking guidance from the same data the Folia Migration action uses.
 
 > `@folia-documentation how do I run code every tick for a specific player?`
+>
+> `@folia-documentation convert this runTaskTimer call to Folia`
 
 Both read the same on-disk index the commands use, so they work offline for anything already cached and never invent an API that is absent from the results. Raycast AI requires a Raycast Pro subscription.
 
@@ -111,7 +137,7 @@ Both read the same on-disk index the commands use, so they work offline for anyt
 
 Javadoc publishes a machine-readable search index next to the pages it renders, so the extension does not have to scrape anything to know what exists:
 
-1. **`type-search-index.js`, `member-search-index.js` and `package-search-index.js`** — the Javadoc search indexes for the selected Folia version, filtered to the documented `org.bukkit`, `io.papermc.paper`, `com.destroystokyo.paper` and `co.aikar` packages. Cached on disk for 24 hours; all searching happens locally against that cache, so typing never hits the network.
+1. **`type-search-index.js`, `member-search-index.js` and `package-search-index.js`** — the Javadoc search indexes for the selected Folia version, filtered to the documented `org.bukkit`, `io.papermc.paper`, `com.destroystokyo.paper`, `org.spigotmc` and `co.aikar` packages. Cached on disk for 24 hours; all searching happens locally against that cache, so typing never hits the network. Only `page` and `anchor` are stored per entry — the full URL is derived on demand instead of duplicated ~33,000 times, which keeps the cache file well under half the size it would otherwise be.
 2. **`deprecated-list.html`** — scanned once per day per version to build the deprecated badge, matched by the exact page and anchor the search index already uses.
 3. **`docs.papermc.io/folia/`** — the guide site, sliced into one entry per `<h2>` section so a sub-heading stays attached to its guide rather than becoming a wall of text.
 4. **The entry's own page** — fetched when you open an entry. Only the `<section>` that carries the anchor is sliced out at the string level and parsed, because building a DOM for a page the size of `Player.html` costs about twenty times the memory of one section.

@@ -199,7 +199,6 @@ function toEntry(section: GuideSection): DocEntry {
     section: "guide",
     page: section.page,
     anchor: section.anchor,
-    url: `${GUIDES_BASE}${section.page}#${section.anchor === "_top" ? "" : section.anchor}`,
   };
 }
 

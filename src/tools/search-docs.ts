@@ -1,4 +1,5 @@
 import { loadDetails } from "../lib/docpage";
+import { entryUrl } from "../lib/entry-url";
 import { loadGuides } from "../lib/guides";
 import { loadInventory } from "../lib/inventory";
 import { ensureMeta } from "../lib/metadata";
@@ -46,7 +47,7 @@ export default async function searchDocs(input: Input) {
         notSupportedOnFolia: badges?.legacyScheduler ?? false,
         documentation: details.markdown.slice(0, DESCRIPTION_LIMIT),
         example: details.example,
-        url: entry.url,
+        url: entryUrl(entry),
       };
     }),
   );

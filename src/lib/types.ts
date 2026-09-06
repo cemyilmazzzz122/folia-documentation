@@ -32,7 +32,10 @@ export interface DocEntry {
   section: SectionId;
   page: string;
   anchor: string;
-  url: string;
+  // The URL is derived at read time (see entry-url.ts) rather than stored: it
+  // is fully determined by kind/page/anchor/version, and storing a full URL
+  // on every one of ~33,000 cached entries roughly doubles the cache file size
+  // for no new information.
   // Only set on Javadoc entries; guide entries come from a single, unversioned site.
   version?: string;
 }
