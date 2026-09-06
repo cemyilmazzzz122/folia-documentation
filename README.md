@@ -94,7 +94,7 @@ A second command dedicated to the four APIs that replace `BukkitScheduler` on Fo
 - **`EntityScheduler`** (`entity.getScheduler()`) — logic tied to one entity, following it across regions as it moves.
 - **`AsyncScheduler`** (`Bukkit.getAsyncScheduler()`) — logic that must not block a tick thread at all: HTTP calls, database queries.
 
-A fifth entry explains exactly why `BukkitScheduler` itself isn't in that list. <kbd>⌘</kbd><kbd>E</kbd> copies the example, <kbd>⌘</kbd><kbd>A</kbd> copies just the accessor line.
+A fifth entry explains exactly why `BukkitScheduler` itself isn't in that list. <kbd>⌘</kbd><kbd>E</kbd> copies the example, <kbd>⌘</kbd><kbd>⇧</kbd><kbd>A</kbd> copies just the accessor line.
 
 ## Raycast AI tools
 

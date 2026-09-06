@@ -83,12 +83,23 @@ async function ensureStored(version: string, force = false): Promise<StoredMeta>
   }
 }
 
+// Keyed by version and entry count: the entry count changes whenever the
+// inventory itself is refreshed, which is the only time this needs to redo
+// the 30,000-entry scan instead of returning what it already built.
+const memoryMeta = new Map<string, MetaIndex>();
+
 export async function ensureMeta(
   entries: DocEntry[],
   version: string,
   force = false,
 ): Promise<MetaIndex> {
   const stored = await ensureStored(version, force);
+  const cacheKey = `${version}:${stored.fetchedAt}:${entries.length}`;
+  if (!force) {
+    const remembered = memoryMeta.get(cacheKey);
+    if (remembered) return remembered;
+  }
+
   const deprecated = new Set(stored.deprecated);
 
   const meta: MetaIndex = {};
@@ -98,5 +109,7 @@ export async function ensureMeta(
     if (isDeprecated || isLegacyScheduler)
       meta[entry.name] = { deprecated: isDeprecated, legacyScheduler: isLegacyScheduler };
   }
+
+  memoryMeta.set(cacheKey, meta);
   return meta;
 }

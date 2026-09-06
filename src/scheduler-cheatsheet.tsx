@@ -44,7 +44,7 @@ export default function SchedulerCheatsheet() {
                 <Action.CopyToClipboard
                   title="Copy Accessor"
                   content={api.accessor}
-                  shortcut={{ modifiers: ["cmd"], key: "a" }}
+                  shortcut={{ modifiers: ["cmd", "shift"], key: "a" }}
                 />
                 <Action.OpenInBrowser
                   title="Open Javadoc"

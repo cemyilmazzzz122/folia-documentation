@@ -58,7 +58,8 @@ function resolveSection(pkg: string): SectionId {
   if (
     pkg.startsWith("org.bukkit.event") ||
     pkg.startsWith("io.papermc.paper.event") ||
-    pkg.startsWith("com.destroystokyo.paper.event")
+    pkg.startsWith("com.destroystokyo.paper.event") ||
+    pkg.startsWith("org.spigotmc.event")
   )
     return "events";
   if (pkg.startsWith("org.bukkit.entity")) return "entities";
@@ -73,14 +74,16 @@ function pagePath(pkg: string, type: string): string {
   return `${pkg.replace(/\./g, "/")}/${type}.html`;
 }
 
-// The Bukkit/Paper doclet only publishes these two roots as documented API;
-// everything else (relocated libraries, Log4j, Guava re-exports) is noise.
+// The Bukkit/Paper doclet publishes these roots as documented API; everything
+// else (relocated libraries, Log4j, Guava re-exports) is noise. org.spigotmc
+// is small but carries real, widely used API such as PlayerSpawnLocationEvent.
 function isDocumentedPackage(pkg: string): boolean {
   return (
     pkg.startsWith("org.bukkit") ||
     pkg.startsWith("io.papermc.paper") ||
     pkg.startsWith("com.destroystokyo.paper") ||
-    pkg.startsWith("co.aikar")
+    pkg.startsWith("co.aikar") ||
+    pkg.startsWith("org.spigotmc")
   );
 }
 
