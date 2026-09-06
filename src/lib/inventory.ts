@@ -1,0 +1,266 @@
+import { environment } from "@raycast/api";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { CACHE_SCHEMA, docsBase, timeoutSignal } from "./constants";
+import { DocEntry, EntryKind, Inventory, SectionId } from "./types";
+
+const CACHE_TTL = 24 * 60 * 60 * 1000;
+
+const TYPE_INDEX = "type-search-index.js";
+const MEMBER_INDEX = "member-search-index.js";
+const PACKAGE_INDEX = "package-search-index.js";
+
+// The "k" field of a Javadoc search index item is an index into the itemDesc
+// table of the generated search.js. Members default to 5 (method) and types to
+// 12 (class) when the field is absent.
+const MEMBER_KINDS: Record<string, EntryKind> = {
+  "0": "constant",
+  "1": "field",
+  "2": "field",
+  "3": "initializer",
+  "4": "method",
+  "5": "method",
+  "6": "method",
+  "7": "field",
+};
+
+const TYPE_KINDS: Record<string, EntryKind> = {
+  "8": "annotation",
+  "9": "enum",
+  "10": "interface",
+  "11": "record",
+  "12": "class",
+  "13": "exception",
+};
+
+const SUMMARY_KIND = "18";
+
+interface IndexItem {
+  p?: string;
+  c?: string;
+  l: string;
+  u?: string;
+  k?: string;
+}
+
+function parseIndexFile(source: string): IndexItem[] {
+  const start = source.indexOf("[");
+  const end = source.lastIndexOf("]");
+  if (start === -1 || end <= start)
+    throw new Error("Unrecognised Javadoc search index format");
+  return JSON.parse(source.slice(start, end + 1)) as IndexItem[];
+}
+
+// The scheduler package is Folia's whole reason to exist, so it gets its own
+// section instead of being lost inside the much larger Paper API package.
+function resolveSection(pkg: string): SectionId {
+  if (pkg.startsWith("io.papermc.paper.threadedregions")) return "scheduler";
+  if (
+    pkg.startsWith("org.bukkit.event") ||
+    pkg.startsWith("io.papermc.paper.event") ||
+    pkg.startsWith("com.destroystokyo.paper.event")
+  )
+    return "events";
+  if (pkg.startsWith("org.bukkit.entity")) return "entities";
+  if (pkg.startsWith("org.bukkit.inventory")) return "inventory";
+  if (pkg.startsWith("io.papermc.paper") || pkg.startsWith("com.destroystokyo.paper"))
+    return "paper";
+  if (pkg.startsWith("org.bukkit")) return "core";
+  return "utils";
+}
+
+function pagePath(pkg: string, type: string): string {
+  return `${pkg.replace(/\./g, "/")}/${type}.html`;
+}
+
+// The Bukkit/Paper doclet only publishes these two roots as documented API;
+// everything else (relocated libraries, Log4j, Guava re-exports) is noise.
+function isDocumentedPackage(pkg: string): boolean {
+  return (
+    pkg.startsWith("org.bukkit") ||
+    pkg.startsWith("io.papermc.paper") ||
+    pkg.startsWith("com.destroystokyo.paper") ||
+    pkg.startsWith("co.aikar")
+  );
+}
+
+function typeEntry(item: IndexItem): DocEntry | null {
+  const pkg = item.p;
+  if (!pkg || item.k === SUMMARY_KIND || !isDocumentedPackage(pkg))
+    return null;
+
+  const base = TYPE_KINDS[item.k ?? "12"] ?? "class";
+  const section = resolveSection(pkg);
+  const kind: EntryKind =
+    section === "events" && (base === "class" || base === "interface")
+      ? "event"
+      : base;
+  const page = pagePath(pkg, item.l);
+
+  return {
+    name: `${pkg}.${item.l}`,
+    display: item.l,
+    pkg,
+    owner: "",
+    kind,
+    section,
+    page,
+    anchor: "class-description",
+    url: "",
+  };
+}
+
+function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function memberEntry(item: IndexItem): DocEntry | null {
+  const pkg = item.p;
+  const type = item.c;
+  if (!pkg || !type || item.k === SUMMARY_KIND || !isDocumentedPackage(pkg))
+    return null;
+
+  const target = item.u ?? item.l;
+  const anchor = safeDecode(target);
+  const page = pagePath(pkg, type);
+  const owner = `${pkg}.${type}`;
+
+  return {
+    name: `${owner}#${anchor}`,
+    display: `${type}.${item.l}`,
+    pkg,
+    owner,
+    kind: MEMBER_KINDS[item.k ?? "5"] ?? "method",
+    section: resolveSection(pkg),
+    page,
+    anchor,
+    url: "",
+  };
+}
+
+function packageEntry(item: IndexItem): DocEntry | null {
+  if (item.k === SUMMARY_KIND || !isDocumentedPackage(item.l)) return null;
+
+  const page = `${item.l.replace(/\./g, "/")}/package-summary.html`;
+  return {
+    name: item.l,
+    display: item.l,
+    pkg: item.l,
+    owner: "",
+    kind: "package",
+    section: resolveSection(item.l),
+    page,
+    anchor: "package-description",
+    url: "",
+  };
+}
+
+function deduplicate(entries: DocEntry[]): DocEntry[] {
+  const best = new Map<string, DocEntry>();
+  for (const entry of entries) {
+    const current = best.get(entry.name);
+    if (!current || entry.name.length < current.name.length)
+      best.set(entry.name, entry);
+  }
+  return [...best.values()];
+}
+
+async function fetchText(base: string, file: string): Promise<string> {
+  const response = await fetch(base + file, { signal: timeoutSignal() });
+  if (!response.ok)
+    throw new Error(`Failed to download ${file} (HTTP ${response.status})`);
+  return response.text();
+}
+
+function cachePath(version: string): string {
+  return path.join(
+    environment.supportPath,
+    `inventory-${CACHE_SCHEMA}-${version}.json`,
+  );
+}
+
+async function readCache(version: string): Promise<Inventory | null> {
+  try {
+    const cached = JSON.parse(
+      await readFile(cachePath(version), "utf8"),
+    ) as Inventory;
+    return cached.entries?.length ? cached : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeCache(inventory: Inventory): Promise<void> {
+  await mkdir(environment.supportPath, { recursive: true });
+  await writeFile(cachePath(inventory.version), JSON.stringify(inventory), "utf8");
+}
+
+async function download(version: string): Promise<Inventory> {
+  const base = docsBase(version);
+  const [types, members, packages] = await Promise.all([
+    fetchText(base, TYPE_INDEX),
+    fetchText(base, MEMBER_INDEX),
+    fetchText(base, PACKAGE_INDEX),
+  ]);
+
+  const entries = [
+    ...parseIndexFile(packages).map(packageEntry),
+    ...parseIndexFile(types).map(typeEntry),
+    ...parseIndexFile(members).map(memberEntry),
+  ]
+    .filter((entry): entry is DocEntry => entry !== null)
+    .map((entry) => ({
+      ...entry,
+      version,
+      url: base + entry.page + "#" + entry.anchor,
+    }));
+
+  if (entries.length < 1000)
+    throw new Error("The Javadoc search index came back unexpectedly small");
+
+  const inventory: Inventory = {
+    version,
+    fetchedAt: Date.now(),
+    entries: deduplicate(entries).sort((a, b) => a.name.localeCompare(b.name)),
+  };
+  await writeCache(inventory);
+  return inventory;
+}
+
+// Parsing the cache file costs several megabytes of transient JSON, so the
+// result is held in memory per version for the lifetime of the process.
+const memoryInventory = new Map<string, Inventory>();
+
+export async function loadInventory(version: string): Promise<Inventory> {
+  const remembered = memoryInventory.get(version);
+  if (remembered && Date.now() - remembered.fetchedAt < CACHE_TTL)
+    return remembered;
+
+  const cached = await readCache(version);
+  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL) {
+    memoryInventory.set(version, cached);
+    return cached;
+  }
+
+  try {
+    const fresh = await download(version);
+    memoryInventory.set(version, fresh);
+    return fresh;
+  } catch (error) {
+    if (cached) {
+      memoryInventory.set(version, cached);
+      return cached;
+    }
+    throw error;
+  }
+}
+
+export async function refreshInventory(version: string): Promise<Inventory> {
+  const fresh = await download(version);
+  memoryInventory.set(version, fresh);
+  return fresh;
+}
