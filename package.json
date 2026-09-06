@@ -133,7 +133,7 @@
     },
     {
       "name": "migrate-scheduler",
-      "title": "Migrate BukkitScheduler Call to Folia",
+      "title": "Migrate Bukkit Scheduler Call to Folia",
       "description": "Given a legacy org.bukkit.scheduler.BukkitScheduler method name (runTask, runTaskLater, runTaskTimer, or their *Asynchronously variants), returns the real Folia scheduler API equivalents built from the actual Javadoc signatures, plus guidance on which one to pick. Use this whenever converting or explaining how to port Bukkit/Paper plugin code to Folia."
     }
   ]
