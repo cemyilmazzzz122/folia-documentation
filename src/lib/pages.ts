@@ -71,9 +71,11 @@ export async function fetchPage(
   const pending = force ? undefined : pendingPages.get(key);
   if (pending) return pending;
 
-  const request = loadPage(key, page, force, remember).finally(() =>
-    pendingPages.delete(key),
-  );
+  // A forced prefetch replaces the entry of an ordinary request for the same
+  // page, so each request only clears the slot while it still owns it.
+  const request = loadPage(key, page, force, remember).finally(() => {
+    if (pendingPages.get(key) === request) pendingPages.delete(key);
+  });
   pendingPages.set(key, request);
   return request;
 }
