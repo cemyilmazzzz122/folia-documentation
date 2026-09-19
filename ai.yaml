@@ -1,0 +1,122 @@
+instructions: |
+  Answer Folia and Paper plugin questions from the documentation these tools return, never from memory.
+  - Call search-docs before answering any question about a Folia, Paper or Bukkit API so the answer matches the real signatures.
+  - Call read-entry when the user names one specific type or member and wants its full documentation or member list.
+  - Call migrate-scheduler whenever the user wants to port or explain a BukkitScheduler call (runTask, runTaskLater, runTaskTimer or their *Asynchronously variants) on Folia.
+  - If a result has notSupportedOnFolia set, say so and point to GlobalRegionScheduler, RegionScheduler, EntityScheduler or AsyncScheduler instead.
+  - Include Java code examples when the tools return them, and link to the documentation URL.
+
+evals:
+  - input: "@folia-documentation How do I schedule a task that follows a specific player?"
+    mocks:
+      search-docs:
+        version: "26.2"
+        results:
+          - name: "org.bukkit.entity.Entity#getScheduler()"
+            kind: "method"
+            signature: "@NotNull EntityScheduler getScheduler()"
+            deprecated: false
+            notSupportedOnFolia: false
+            documentation: "Returns the task scheduler for this entity. The entity scheduler can be used to schedule tasks that are guaranteed to always execute on the tick thread that owns the entity."
+            url: "https://jd.papermc.io/folia/26.2/org/bukkit/entity/Entity.html#getScheduler()"
+          - name: "io.papermc.paper.threadedregions.scheduler.EntityScheduler"
+            kind: "interface"
+            signature: "public interface EntityScheduler"
+            deprecated: false
+            notSupportedOnFolia: false
+            documentation: "An entity can move between worlds with an arbitrary tick delay, be temporarily removed for players (i.e. end credits), be partially removed from world state (i.e. inactive but not removed), teleport between ticking regions, teleport between worlds, and even be removed entirely from the server. The uncertainty of an entity's state can make it difficult to schedule tasks without worrying about undefined behaviors resulting from any of the states listed previously."
+            url: "https://jd.papermc.io/folia/26.2/io/papermc/paper/threadedregions/scheduler/EntityScheduler.html"
+        note: "Every field comes from the official Folia Javadoc and PaperMC guides for the indexed version."
+    expected:
+      - callsTool:
+          name: "search-docs"
+          arguments:
+            query:
+              includes: "scheduler"
+      - includes: "getScheduler"
+      - meetsCriteria: "Recommends the EntityScheduler obtained from the player's getScheduler() method."
+
+  - input: "@folia-documentation What does PlayerJoinEvent give me?"
+    mocks:
+      search-docs:
+        version: "26.2"
+        results:
+          - name: "org.bukkit.event.player.PlayerJoinEvent"
+            kind: "event"
+            signature: "public class PlayerJoinEvent extends PlayerEvent"
+            deprecated: false
+            notSupportedOnFolia: false
+            documentation: "Called when a player joins a server."
+            url: "https://jd.papermc.io/folia/26.2/org/bukkit/event/player/PlayerJoinEvent.html"
+        note: "Every field comes from the official Folia Javadoc and PaperMC guides for the indexed version."
+    expected:
+      - callsTool:
+          name: "search-docs"
+          arguments:
+            query:
+              includes: "PlayerJoinEvent"
+      - includes: "PlayerJoinEvent"
+
+  - input: "@folia-documentation Show me the full docs for org.bukkit.entity.Player#getScheduler()"
+    mocks:
+      read-entry:
+        found: true
+        name: "org.bukkit.entity.Entity#getScheduler()"
+        kind: "method"
+        signature: "@NotNull EntityScheduler getScheduler()"
+        deprecated: false
+        notSupportedOnFolia: false
+        documentation: "Returns the task scheduler for this entity. The entity scheduler can be used to schedule tasks that are guaranteed to always execute on the tick thread that owns the entity.\n\n**Returns:** the task scheduler for this entity."
+        references:
+          - "io.papermc.paper.threadedregions.scheduler.EntityScheduler"
+        url: "https://jd.papermc.io/folia/26.2/org/bukkit/entity/Entity.html#getScheduler()"
+    expected:
+      - callsTool:
+          name: "read-entry"
+          arguments:
+            name:
+              includes: "getScheduler"
+      - includes: "EntityScheduler"
+
+  - input: "@folia-documentation Convert Bukkit.getScheduler().runTaskTimer(plugin, task, 0L, 20L) to Folia"
+    mocks:
+      migrate-scheduler:
+        found: true
+        bukkitMethod: "runTaskTimer(Plugin, Runnable, long, long)"
+        deterministic: false
+        guidance: "Runs repeatedly, in ticks. Pick the scheduler that matches what the task itself touches."
+        equivalents:
+          - api: "GlobalRegionScheduler"
+            code: "Bukkit.getGlobalRegionScheduler().runAtFixedRate(plugin, task -> {\n        // your code\n    }, delayTicks, periodTicks);"
+          - api: "RegionScheduler"
+            code: "Bukkit.getRegionScheduler().runAtFixedRate(plugin, location, task -> {\n        // your code\n    }, delayTicks, periodTicks);"
+          - api: "EntityScheduler"
+            code: "entity.getScheduler().runAtFixedRate(plugin, task -> {\n        // your code\n    }, null, delayTicks, periodTicks);"
+        note: "BukkitScheduler's signature carries no information about what the task actually touches, so more than one equivalent is listed."
+    expected:
+      - callsTool:
+          name: "migrate-scheduler"
+          arguments:
+            method:
+              includes: "runTaskTimer"
+      - includes: "runAtFixedRate"
+      - meetsCriteria: "Explains that the right scheduler depends on what the task touches and does not simply recommend GlobalRegionScheduler for every case."
+
+  - input: "@folia-documentation What replaces runTaskLaterAsynchronously on Folia?"
+    mocks:
+      migrate-scheduler:
+        found: true
+        bukkitMethod: "runTaskLaterAsynchronously(Plugin, Runnable, long)"
+        deterministic: true
+        guidance: "AsyncScheduler's delay is real time, not ticks, so a tick delay needs converting (20 ticks = 1 second)."
+        equivalents:
+          - api: "AsyncScheduler"
+            code: "Bukkit.getAsyncScheduler().runDelayed(plugin, task -> {\n        // your code\n    }, delayTicks * 50L, TimeUnit.MILLISECONDS);"
+        note: "This is a one-to-one replacement: BukkitScheduler's async methods never touched world or entity state, so AsyncScheduler is always correct here."
+    expected:
+      - callsTool:
+          name: "migrate-scheduler"
+          arguments:
+            method:
+              includes: "runTaskLaterAsynchronously"
+      - includes: "AsyncScheduler"
