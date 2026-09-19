@@ -1,4 +1,4 @@
-import { Action, ActionPanel, Color, Icon, List } from "@raycast/api";
+import { Action, ActionPanel, Color, Icon, Keyboard, List } from "@raycast/api";
 import {
   LEGACY_SCHEDULER_NOTICE,
   SCHEDULER_APIS,
@@ -49,7 +49,7 @@ export default function SchedulerCheatsheet() {
                   title="Copy Example Code"
                   content={api.code}
                   icon={Icon.CodeBlock}
-                  shortcut={{ modifiers: ["cmd"], key: "e" }}
+                  shortcut={Keyboard.Shortcut.Common.Edit}
                 />
                 <Action.CopyToClipboard
                   title="Copy Accessor"
